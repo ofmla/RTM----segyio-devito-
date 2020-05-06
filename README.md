@@ -1,1 +1,2 @@
 # RTM----segyio-devito-
+Reverse time migration belongs to the class of two-way full wave migration solutions. Rather than performing imaging by extrapolating the data in depth, as in traditional one-way full wave solutions, RTM solves the wave equation forward in time for the source modeling field and backward in time for the recorded receiver field for that shot. At each time step, the depth image is obtained by cross-correlating the two fields.
