@@ -4,7 +4,7 @@ import time
 import math
 from dask_jobqueue import SLURMCluster
 from dask.distributed import Client, LocalCluster, wait
-from dask.distributed import as_completed, get_worker
+from dask.distributed import as_completed, get_worker, progress
 
 from devito import *
 from examples.seismic import Model, AcquisitionGeometry, TimeAxis
@@ -15,6 +15,9 @@ from examples.seismic.tti.operators import Gxx_centered_2d, Gzz_centered_2d
 from examples.checkpointing.checkpoint import DevitoCheckpoint
 from examples.checkpointing.checkpoint import CheckpointOperator
 from pyrevolve import Revolver
+
+configuration['language'] = 'openmp'
+configuration['log-level'] = 'DEBUG'
 
 
 def humanbytes(B):
@@ -339,6 +342,9 @@ def forward_modeling_multi_shots(c, par_files, d):
     futures = []
     for record in records:
         futures.append(c.submit(forward_modeling_single_shot, record, table=my_dict, par_files=par_files))
+        
+	# Check progress
+	progress(futures)
 
     # Wait for all workers to finish and collect shots
     wait(futures)
@@ -346,6 +352,10 @@ def forward_modeling_multi_shots(c, par_files, d):
     length = len(futures)
     final_image = future[0].result()
     i = 1
+
+	print('\n::: start user output :::')
+	print(c)
+	print('::: end user output :::\n')
 
     # Iterating using while loop
     while i < length:
@@ -376,7 +386,10 @@ def get_slurm_dask_client(n_workers, n_cores, n_processes):
     header_lines = header_lines[:mem_pos]+header_lines[mem_pos+1:]
     cluster.job_header = '\n'.join(header_lines)
     print(cluster.job_script())
-    cluster.scale(n_workers)
+	# Scale cluster to n_workers
+	cluster.scale(n_workers)
+	# Wait for cluster to start
+	time.sleep(30)
     client = Client(cluster)
     print(client.scheduler_info())
 
