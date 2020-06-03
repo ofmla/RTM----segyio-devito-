@@ -15,6 +15,18 @@ All other packages (i.e. [dask jobqueue](https://github.com/dask/dask-jobqueue),
 pip install segyio
 pip install dask-jobqueue --upgrade
 ```
+The cluster (OGÚN) I use is managed by Slurm, but, for reasons I am unaware of, it does not allow manually setting the memory of nodes when submitting my computation in a batch mode. Because of this, I implemented a workaround tha allowed me to submit my computation (See [dask-jobqueue issue #238](https://github.com/dask/dask-jobqueue/issues/238#issuecomment-468376008)). However, quite recently I realized that my workaround does not work for latest versions of dask-jobqueue. Conversely, that newer versions provide a way to adress the issue by allowing users to skip some lines in the header when configuring the cluster (See [dask-jobqueue issue #238 reply](https://github.com/dask/dask-jobqueue/issues/238#issuecomment-629994873)). I tried the newly developed solution but I faced a problem, similar to above. The manager set a standard value of `1 MB` for the memory of nodes, causing the computation to fail. If you face the same problems you can follow these steps:
+```
+pip unistall dask-jobqueue
+pip install dask-jobqueue==0.4.1
+```
+You will soon find out that this bring further problems. HOwever, those problems should be solved by downgrading some packages. Install the following packages in the same way as above  
+```
+distributed==1.27.0
+dask==1.1.4
+msgpack==0.6.1
+```
+You would then execute the script normally (see [Run description](##Run))
 
 ## Get data
 In order to run this code, you first need to download the files from [SEG wiki](https://wiki.seg.org/wiki/2007_BP_Anisotropic_Velocity_Benchmark). I organized the shot gathers and anisotropic parameters in two separated folders, `ModelShots` and `ModelParameters` respectively. You can proceed as follows:   
