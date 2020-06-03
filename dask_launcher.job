@@ -1,0 +1,19 @@
+#!/bin/bash
+#SBATCH -J dask_launcher
+#SBATCH -p standard
+#SBATCH --time=168:00:00
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --output=dask_launcher.o%j
+#SBATCH --error=dask_launcher.e%j
+#SBATCH --hint=nomultithread
+
+export OMP_NUM_THREADS=10
+#export DEVITO_LANGUAGE=openmp
+#export DEVITO_LOGGING=DEBUG
+ulimit -s unlimited
+
+module load anaconda3/5.2.0
+source activate devito
+
+python RTM_BP_2007_repo.py
