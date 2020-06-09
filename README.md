@@ -17,7 +17,7 @@ pip install dask-jobqueue --upgrade
 ```
 ## Notes and workarounds  
 
-The cluster (OGÚN) I use is managed by [Slurm](https://slurm.schedmd.com/overview.html), but, for reasons I am unaware of, it does not allow manually setting the memory of nodes when submitting my computation in a batch mode. Because of this, I implemented a workaround tha allowed me to submit my computation (See [dask-jobqueue issue #238](https://github.com/dask/dask-jobqueue/issues/238#issuecomment-468376008)). However, quite recently I realized that my workaround does not work for latest versions of dask-jobqueue. Conversely, that newer versions provide a way to adress the issue by allowing users to skip some lines in the header when configuring the cluster (See [dask-jobqueue issue #238 reply](https://github.com/dask/dask-jobqueue/issues/238#issuecomment-629994873)). I tried the newly developed solution but I faced a problem, similar to above. The manager set a standard value of `1 MB` for the memory of nodes, causing the computation to fail. If you face the same problems you can follow these steps:
+The cluster (OGÚN) I use is managed by [Slurm](https://slurm.schedmd.com/overview.html), but, for reasons I am unaware of, it does not allow manually setting the memory of nodes when submitting my computation in a batch mode. Because of this, I implemented a workaround that allowed me to submit my computation (See [dask-jobqueue issue #238](https://github.com/dask/dask-jobqueue/issues/238#issuecomment-468376008)). However, quite recently I realized that my workaround does not work for latest versions (`0.7.0, 0.7.1`) of dask-jobqueue. Conversely, those newer versions provide a way to adress the issue by allowing users to skip some lines in the header when configuring the cluster (See [dask-jobqueue issue #238 reply](https://github.com/dask/dask-jobqueue/issues/238#issuecomment-629994873)). I tried the newly developed solution but I faced a problem, similar to above. The manager set a standard value of `1.5 MB` for the memory of nodes, causing the computation to fail. If you face the same problems you can follow these steps:
 ```
 pip unistall dask-jobqueue
 pip install dask-jobqueue==0.4.1
@@ -50,7 +50,7 @@ I create a SLURM job file `dask_launcher.job`. To run, simply submit the batch j
 ```
 sbatch dask_launcher.job
 ```
-Check the progress of the code
+You can check the progress of the code with:  
 ```
 tail -f dask_launcher.o<jid>
 ```
