@@ -353,7 +353,7 @@ def forward_modeling_multi_shots(c, par_files, d):
     wait(futures)
     # Getting length of list
     length = len(futures)
-    final_image = future[0].result()
+    final_image = futures[0].result()
     i = 1
 
     print('\n::: start user output :::')
