@@ -172,8 +172,8 @@ def ImagingOperator(geometry, image, space_order, save=True):
 
     stencils = kernel_centered_2d(geometry.model, uu, vv, space_order, forward=False)
 
-    stencils += residual.inject(field=uu, expr=residual * dt**2 / geometry.model.m)
-    stencils += residual.inject(field=vv, expr=residual * dt**2 / geometry.model.m)
+    stencils += residual.inject(field=uu.backward, expr=residual * dt**2 / geometry.model.m)
+    stencils += residual.inject(field=vv.backward, expr=residual * dt**2 / geometry.model.m)
 
     # Correlate u and v for the current time step and add it to the image
     image_update = Eq(image, image - (u.dt2*uu + v.dt2*vv))
@@ -290,9 +290,9 @@ def forward_modeling_single_shot(record, table, par_files):
                           time_order=2, space_order=space_order)
 
         cp = DevitoCheckpoint([u, v])
-	op_fwd = solver_tti.op_fwd(save=False)
-	op_fwd.cfunction
-	op_imaging.cfunction
+        op_fwd = solver_tti.op_fwd(save=False)
+        op_fwd.cfunction
+        op_imaging.cfunction
         n_checkpoints = 60
         wrap_fw = CheckpointOperator(op_fwd, src=geometry.src,
                                      u=u, v=v, vp=model.vp, dt=model.critical_dt)
@@ -320,7 +320,7 @@ def forward_modeling_single_shot(record, table, par_files):
         uu = TimeFunction(name='uu', grid=model.grid, staggered=None, time_order=2, space_order=space_order)
 
         time_range = TimeAxis(start=0, stop=(num_samples-1)*samp_int, step=samp_int)
-        d_obs = Receiver(name='dobs', grid=model.grid, time_range=time_range, coordinates=geometry.rec_positions)
+        dobs = Receiver(name='dobs', grid=model.grid, time_range=time_range, coordinates=geometry.rec_positions)
         if not is_empty:
             dobs.data[:] = retrieved_shot[idx_tr, :].T
         else:
@@ -345,7 +345,7 @@ def forward_modeling_multi_shots(c, par_files, d):
     futures = []
     for record in records:
         futures.append(c.submit(forward_modeling_single_shot, record, table=my_dict, par_files=par_files))
-        
+
     # Check progress
     progress(futures)
 
@@ -389,10 +389,10 @@ def get_slurm_dask_client(n_workers, n_cores, n_processes):
     header_lines = header_lines[:mem_pos]+header_lines[mem_pos+1:]
     cluster.job_header = '\n'.join(header_lines)
     print(cluster.job_script())
-	# Scale cluster to n_workers
-	cluster.scale(n_workers)
-	# Wait for cluster to start
-	time.sleep(30)
+    # Scale cluster to n_workers
+    cluster.scale(n_workers)
+    # Wait for cluster to start
+    time.sleep(30)
     client = Client(cluster)
     print(client.scheduler_info())
 
@@ -418,7 +418,7 @@ def main(c):
 
     final_image = forward_modeling_multi_shots(c, par_files, shots)
     g = open('image_rtm.bin', 'wb')
-    np.transpose(np.diff(final_image, axis=1).astype('float32').tofile(g))
+    np.transpose(np.diff(final_image, axis=1)).astype('float32').tofile(g)
     print(final_image.shape)
 
 
@@ -427,7 +427,6 @@ if __name__ == "__main__":
     # Start Dask cluster
     # cluster = LocalCluster(n_workers=4, death_timeout=600)
     # c = Client(cluster)
-    c = get_slurm_dask_client(2, 20, 1)
+    c = get_slurm_dask_client(5, 10, 1)
     print('OK')
     main(c)
-
