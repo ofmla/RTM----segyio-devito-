@@ -418,7 +418,7 @@ def main(c):
 
     final_image = forward_modeling_multi_shots(c, par_files, shots)
     g = open('image_rtm.bin', 'wb')
-    np.transpose(final_image).astype('float32').tofile(g)
+    np.transpose(np.diff(final_image, axis=1).astype('float32').tofile(g))
     print(final_image.shape)
 
 
