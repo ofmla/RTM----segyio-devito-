@@ -290,8 +290,11 @@ def forward_modeling_single_shot(record, table, par_files):
                           time_order=2, space_order=space_order)
 
         cp = DevitoCheckpoint([u, v])
+	op_fwd = solver_tti.op_fwd(save=False)
+	op_fwd.cfunction
+	op_imaging.cfunction
         n_checkpoints = 60
-        wrap_fw = CheckpointOperator(solver_tti.op_fwd(save=False), src=geometry.src,
+        wrap_fw = CheckpointOperator(op_fwd, src=geometry.src,
                                      u=u, v=v, vp=model.vp, dt=model.critical_dt)
         time_range = TimeAxis(start=0, stop=(num_samples-1)*samp_int, step=samp_int)
         dobs = Receiver(name='dobs', grid=model.grid, time_range=time_range, coordinates=geometry.rec_positions)
@@ -343,8 +346,8 @@ def forward_modeling_multi_shots(c, par_files, d):
     for record in records:
         futures.append(c.submit(forward_modeling_single_shot, record, table=my_dict, par_files=par_files))
         
-	# Check progress
-	progress(futures)
+    # Check progress
+    progress(futures)
 
     # Wait for all workers to finish and collect shots
     wait(futures)
@@ -353,9 +356,9 @@ def forward_modeling_multi_shots(c, par_files, d):
     final_image = future[0].result()
     i = 1
 
-	print('\n::: start user output :::')
-	print(c)
-	print('::: end user output :::\n')
+    print('\n::: start user output :::')
+    print(c)
+    print('::: end user output :::\n')
 
     # Iterating using while loop
     while i < length:
