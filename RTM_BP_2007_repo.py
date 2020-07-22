@@ -5,9 +5,10 @@ import math
 from dask_jobqueue import SLURMCluster
 from dask.distributed import Client, LocalCluster, wait
 from dask.distributed import as_completed, get_worker, progress
+from distributed.worker import logger
 
 from devito import *
-from examples.seismic import Model, AcquisitionGeometry, TimeAxis
+from examples.seismic import SeismicModel, AcquisitionGeometry, TimeAxis
 from examples.seismic import Receiver, PointSource
 from examples.seismic.tti import AnisotropicWaveSolver
 from examples.seismic.tti.operators import kernel_centered_2d
@@ -15,10 +16,6 @@ from examples.seismic.tti.operators import Gxx_centered_2d, Gzz_centered_2d
 from examples.checkpointing.checkpoint import DevitoCheckpoint
 from examples.checkpointing.checkpoint import CheckpointOperator
 from pyrevolve import Revolver
-
-configuration['language'] = 'openmp'
-configuration['log-level'] = 'DEBUG'
-
 
 def humanbytes(B):
     'Return the given bytes as a human friendly KB, MB, GB, or TB string'
@@ -144,9 +141,9 @@ def limit_model_to_receiver_area(rec_coord, src_coord, origin, spacing, shape,
         phi = par[3][nx_min:nx_max, ny_min:ny_max, :]
         origin = (ox, oy, oz)
 
-    return Model(vp=vel, origin=origin, shape=vel.shape, spacing=spacing,
+    return SeismicModel(vp=vel, origin=origin, shape=vel.shape, spacing=spacing,
                  space_order=space_order, nbl=nbl, epsilon=epsilon,
-                 delta=delta, theta=theta, phi=phi, dtype=np.float32)
+                 delta=delta, theta=theta, phi=phi, bcs="damp", dtype=np.float32)
 
 
 def ImagingOperator(geometry, image, space_order, save=True):
@@ -185,7 +182,10 @@ def forward_modeling_single_shot(record, table, par_files):
     "Serial modeling function"
 
     worker = get_worker()  # The worker on which this task is running
-    strng = '{} : {} =>'.format(worker.address, str(record).zfill(4))
+    strng = '{} : {} =>'.format(worker.address, str(record).zfill(5))
+    filename = 'logfile_{}.txt'.format(str(record).zfill(5))
+    g = open(filename, 'w')
+    g.write("This will show up in the worker logs")
 
     # Read velocity model
     f = segyio.open(par_files[-1], iline=segyio.tracefield.TraceField.FieldRecord,
@@ -213,7 +213,7 @@ def forward_modeling_single_shot(record, table, par_files):
         par[:] = f.trace.raw[:].reshape(dims)
 
     theta *= (np.pi/180.)  # use radians
-    print('{} Parameter model dims: {}'.format(strng, vp.shape))
+    g.write('{} Parameter model dims: {}\n'.format(strng, vp.shape))
 
     origin = (0., 0.)
     shape = vp.shape
@@ -234,14 +234,14 @@ def forward_modeling_single_shot(record, table, par_files):
     shot_traces = f.trace[position:position+traces_in_shot]
     for i, trace in enumerate(shot_traces):
         retrieved_shot[i] = trace
-    print('{} Shot loaded in: {} seconds'.format(strng, time.time()-start))
+    g.write('{} Shot loaded in: {} seconds\n'.format(strng, time.time()-start))
 
     # Only keep receivers within the model'
     xmin = origin[0]
     idx_xrec = np.where(rec_coord[:, 0] < xmin)[0]
     is_empty = idx_xrec.size == 0
     if not is_empty:
-        print('{} in {}'.format(strng, rec_coord.shape))
+        g.write('{} in {}\n'.format(strng, rec_coord.shape))
         idx_tr = np.where(rec_coord[:, 0] >= xmin)[0]
         rec_coord = np.delete(rec_coord, idx_xrec, axis=0)
 
@@ -254,30 +254,37 @@ def forward_modeling_single_shot(record, table, par_files):
             rec_coord = np.delete(rec_coord, idx_yrec, axis=0)
 
     if rec_coord.size == 0:
-        print('all receivers outside of model')
+        g.write('all receivers outside of model\n')
         return np.zeros(vp.shape)
 
     space_order = 8
-    print('{} before: {} {} {}'.format(strng, params[0].shape, rec_coord.shape, src_coord.shape))
+    g.write('{} before: {} {} {}\n'.format(strng, params[0].shape, rec_coord.shape, src_coord.shape))
     model = limit_model_to_receiver_area(rec_coord, src_coord, origin, spacing,
                                          shape, vp, params, space_order=space_order, nbl=80)
-    print('{} shape_vp {}: '.format(strng, model.vp.shape))
+    g.write('{} shape_vp: {}\n'.format(strng, model.vp.shape))
     model.smooth(('epsilon', 'delta', 'theta'))
 
     # Geometry for current shot
     geometry = AcquisitionGeometry(model, rec_coord, src_coord, 0, (num_samples-1)*samp_int, f0=0.018, src_type='Ricker')
-    print("{} Number of samples modelled data: {}".format(strng, geometry.nt))
+    g.write("{} Number of samples modelled data & dt: {} & {}\n".format(strng, geometry.nt, model.critical_dt))
+    g.write("{} Samples & dt: {} & {}\n".format(strng, num_samples, samp_int))
 
     # Set up solver.
-    solver_tti = AnisotropicWaveSolver(model, geometry)
-    print('{0} Mem full fld: {1} == {2} use ckp instead'.format(strng, model.vp.size*vp.dtype.itemsize*geometry.nt, humanbytes(model.vp.size*vp.dtype.itemsize*geometry.nt)))
+    solver_tti = AnisotropicWaveSolver(model, geometry, space_order=space_order)
+    # Create image symbol and instantiate the previously defined imaging operator
+    image = Function(name='image', grid=model.grid)
+    itemsize = np.dtype(np.float32).itemsize
+    full_fld_mem = model.vp.size*itemsize*geometry.nt*2.
 
-    checkpointing = False
+    checkpointing = True
 
     if checkpointing:
-        # Create image symbol and instantiate the previously defined imaging operator
-        image = Function(name='image', grid=model.grid)
         op_imaging = ImagingOperator(geometry, image, space_order, save=False)
+        n_checkpoints = 150
+        ckp_fld_mem = model.vp.size*itemsize*n_checkpoints*2.
+        g.write('Mem full fld: {} == {} use ckp instead\n'.format(full_fld_mem, humanbytes(full_fld_mem)))
+        g.write('Number of checkpoints/timesteps: {}/{}\n'.format(n_checkpoints, geometry.nt))
+        g.write('Memory saving: {}\n'.format(humanbytes(full_fld_mem-ckp_fld_mem)))
 
         u = TimeFunction(name='u', grid=model.grid, staggered=None,
                          time_order=2, space_order=space_order)
@@ -293,9 +300,9 @@ def forward_modeling_single_shot(record, table, par_files):
         op_fwd = solver_tti.op_fwd(save=False)
         op_fwd.cfunction
         op_imaging.cfunction
-        n_checkpoints = 60
         wrap_fw = CheckpointOperator(op_fwd, src=geometry.src,
-                                     u=u, v=v, vp=model.vp, dt=model.critical_dt)
+                                     u=u, v=v, vp=model.vp, epsilon=model.epsilon,
+                                     delta=model.delta, theta=model.theta, dt=model.critical_dt)
         time_range = TimeAxis(start=0, stop=(num_samples-1)*samp_int, step=samp_int)
         dobs = Receiver(name='dobs', grid=model.grid, time_range=time_range, coordinates=geometry.rec_positions)
         if not is_empty:
@@ -303,19 +310,25 @@ def forward_modeling_single_shot(record, table, par_files):
         else:
             dobs.data[:] = retrieved_shot[:].T
         dobs_resam = dobs.resample(num=geometry.nt)
+        g.write('Shape of residual: {}\n'.format(dobs_resam.data.shape))
         wrap_rev = CheckpointOperator(op_imaging, u=u, v=v, vv=vv, uu=uu, vp=model.vp,
+                                      epsilon=model.epsilon, delta=model.delta, theta=model.theta,
                                       dt=model.critical_dt, residual=dobs_resam)
         # Run forward
         wrp = Revolver(cp, wrap_fw, wrap_rev, n_checkpoints, dobs_resam.shape[0]-2)
+        g.write('Revolver storage: {}\n'.format(humanbytes(cp.size*n_checkpoints*itemsize)))
         wrp.apply_forward()
-        print('{} run finished'.format(strng))
+        g.write('{} run finished\n'.format(strng))
         summary = wrp.apply_reverse()
+        form = 'image_{}.bin'.format(str(record).zfill(5))
+        h = open(form, 'wb')
+        g.write('{}\n'.format(str(image.data.shape)))
+        np.transpose(image.data).astype('float32').tofile(h)
     else:
-        print('{} oi'.format(strng))
-        # For illustrative purposes, assuming that there are enough memory
-        # Create image symbol and instantiate the previously defined imaging operator
-        image = Function(name='image', grid=model.grid)
+        # For illustrative purposes, assuming that there is enough memory
+        g.write('enough memory to save full fld: {} == {}\n'.format(full_fld_mem, humanbytes(full_fld_mem)))
         op_imaging = ImagingOperator(geometry, image, space_order)
+
         vv = TimeFunction(name='vv', grid=model.grid, staggered=None, time_order=2, space_order=space_order)
         uu = TimeFunction(name='uu', grid=model.grid, staggered=None, time_order=2, space_order=space_order)
 
@@ -327,10 +340,11 @@ def forward_modeling_single_shot(record, table, par_files):
             dobs.data[:] = retrieved_shot[:].T
         dobs_resam = dobs.resample(num=geometry.nt)
 
-        u, v = solver_tti.forward(vp=model.vp, dt=model.critical_dt, save=True)[1:-1]
+        u, v = solver_tti.forward(vp=model.vp, epsilon=model.epsilon, delta=model.delta,
+                                  theta=model.theta, dt=model.critical_dt, save=True)[1:-1]
 
-        op_imaging(u=u, v=v, vv=vv, uu=uu, vp=model.vp, dt=model.critical_dt,
-                   residual=dobs_resam)
+        op_imaging(u=u, v=v, vv=vv, uu=uu, epsilon=model.epsilon, delta=model.delta,
+                   theta=model0.theta, vp=model.vp, dt=model.critical_dt, residual=dobs_resam)
 
     full_image = extend_image(origin, vp, model, image)
 
@@ -353,7 +367,7 @@ def forward_modeling_multi_shots(c, par_files, d):
     wait(futures)
     # Getting length of list
     length = len(futures)
-    final_image = futures[0].result()
+    final_image = np.array(futures[0].result())
     i = 1
 
     print('\n::: start user output :::')
@@ -418,6 +432,7 @@ def main(c):
 
     final_image = forward_modeling_multi_shots(c, par_files, shots)
     g = open('image_rtm.bin', 'wb')
+    #np.transpose(final_image).astype('float32').tofile(g)
     np.transpose(np.diff(final_image, axis=1)).astype('float32').tofile(g)
     print(final_image.shape)
 
@@ -427,6 +442,6 @@ if __name__ == "__main__":
     # Start Dask cluster
     # cluster = LocalCluster(n_workers=4, death_timeout=600)
     # c = Client(cluster)
-    c = get_slurm_dask_client(5, 10, 1)
+    c = get_slurm_dask_client(9, 10, 1)
     print('OK')
     main(c)
