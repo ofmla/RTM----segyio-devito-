@@ -313,7 +313,7 @@ def forward_modeling_single_shot(record, table, par_files):
         g.write('Shape of residual: {}\n'.format(dobs_resam.data.shape))
         wrap_rev = CheckpointOperator(op_imaging, u=u, v=v, vv=vv, uu=uu, vp=model.vp,
                                       epsilon=model.epsilon, delta=model.delta, theta=model.theta,
-                                      dt=model.critical_dt, residual=dobs_resam)
+                                      dt=model.critical_dt, residual=dobs_resam.data)
         # Run forward
         wrp = Revolver(cp, wrap_fw, wrap_rev, n_checkpoints, dobs_resam.shape[0]-2)
         g.write('Revolver storage: {}\n'.format(humanbytes(cp.size*n_checkpoints*itemsize)))
