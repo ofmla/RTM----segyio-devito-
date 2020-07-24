@@ -54,3 +54,7 @@ You can check the progress of the code with:
 ```
 tail -f dask_launcher.o<jid>
 ```
+Below, you can see the final image (built only with 5 shots) overlaid with the background velocity model
+
+![alt text](https://github.com/ofmla/RTM----segyio-devito-/blob/master/rtm_figure.png?raw=true)
+
