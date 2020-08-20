@@ -31,7 +31,7 @@ msgpack==0.6.1
 You would then execute the script normally (see [Run description](#run))
 
 ## Get data
-In order to run this code, you first need to download the files from [SEG wiki](https://wiki.seg.org/wiki/2007_BP_Anisotropic_Velocity_Benchmark). I organized the shot gathers and anisotropic parameters in two separated folders, `ModelShots` and `ModelParameters` respectively. You can proceed as follows:   
+In order to run this code, you first need to download the files from [SEG wiki](https://wiki.seg.org/wiki/2007_BP_Anisotropic_Velocity_Benchmark). I organized the shot gathers and anisotropic parameters in two separated floders, `ModelShots` and `ModelParameters` respectively. You can proceed as follows:   
 ```
 mkdir ModelShots && cd ModelShots
 wget http://s3.amazonaws.com/open.source.geoscience/open_data/bptti2007/Anisotropic_FD_Model_Shots_part1.sgy.gz
